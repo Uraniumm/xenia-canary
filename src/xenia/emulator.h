@@ -93,6 +93,7 @@ class Emulator {
   explicit Emulator(const std::filesystem::path& command_line,
                     const std::filesystem::path& storage_root,
                     const std::filesystem::path& content_root,
+                    const std::filesystem::path& mu_root,
                     const std::filesystem::path& cache_root);
   ~Emulator();
 
@@ -251,6 +252,7 @@ class Emulator {
   std::filesystem::path command_line_;
   std::filesystem::path storage_root_;
   std::filesystem::path content_root_;
+  std::filesystem::path mu_root_;
   std::filesystem::path cache_root_;
 
   std::string title_name_;

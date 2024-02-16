@@ -88,9 +88,15 @@ DEFINE_path(
     "under the storage root, or, if available, the cache directory preferred "
     "for the OS, will be used.",
     "Storage");
+DEFINE_path(
+    mu_root, "",
+    "Root path for memory unit file storage (logs, etc.), or empty to use the "
+    "mu folder under the storage root.",
+    "Storage");
 
 DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
 DEFINE_bool(mount_cache, false, "Enable cache mount", "Storage");
+DEFINE_bool(mount_mu, true, "Enable memory unit mount", "Storage");
 
 DEFINE_transient_path(target, "",
                       "Specifies the target .xex or .iso to execute.",
@@ -354,19 +360,20 @@ std::vector<std::unique_ptr<hid::InputDriver>> EmulatorApp::CreateInputDrivers(
         xe::hid::nop::Create(window, EmulatorWindow::kZOrderHidInput));
   } else {
     Factory<hid::InputDriver, ui::Window*, size_t> factory;
-#if XE_PLATFORM_WIN32
-    factory.Add("xinput", xe::hid::xinput::Create);
-#endif  // XE_PLATFORM_WIN32
+//#if XE_PLATFORM_WIN32
+//    factory.Add("xinput", xe::hid::xinput::Create);
+//#endif  // XE_PLATFORM_WIN32
 #if !XE_PLATFORM_ANDROID
     factory.Add("sdl", xe::hid::sdl::Create);
 #endif  // !XE_PLATFORM_ANDROID
 #if XE_PLATFORM_WIN32
+    factory.Add("xinput", xe::hid::xinput::Create);
     // WinKey input driver should always be the last input driver added!
     factory.Add("winkey", xe::hid::winkey::Create);
 #endif  // XE_PLATFORM_WIN32
     for (auto& driver : factory.CreateAll(cvars::hid, window,
                                           EmulatorWindow::kZOrderHidInput)) {
-      if (XSUCCEEDED(driver->Setup())) {
+      if (XSUCCEEDED(driver->Setup(drivers))) {
         drivers.emplace_back(std::move(driver));
       }
     }
@@ -436,6 +443,21 @@ bool EmulatorApp::OnInitialize() {
   cache_root = std::filesystem::absolute(cache_root);
   XELOGI("Host cache root: {}", xe::path_to_utf8(cache_root));
 
+  std::filesystem::path mu_root = cvars::mu_root;
+  if (mu_root.empty()) {
+    mu_root = storage_root / "MU";
+    // TODO(Triang3l): Point to the app's external storage "MU" directory on
+    // Android.
+  } else {
+    // If content root isn't an absolute path, then it should be relative to the
+    // storage root.
+    if (!mu_root.is_absolute()) {
+      mu_root = storage_root / mu_root;
+    }
+  }
+  mu_root = std::filesystem::absolute(mu_root);
+  XELOGI("MU root: {}", xe::path_to_utf8(mu_root));
+
   if (cvars::discord) {
     discord::DiscordPresence::Initialize();
     discord::DiscordPresence::NotPlaying();
@@ -443,7 +465,7 @@ bool EmulatorApp::OnInitialize() {
 
   // Create the emulator but don't initialize so we can setup the window.
   emulator_ =
-      std::make_unique<Emulator>("", storage_root, content_root, cache_root);
+      std::make_unique<Emulator>("", storage_root, content_root, cache_root, mu_root);
 
   // Main emulator display window.
   emulator_window_ = EmulatorWindow::Create(emulator_.get(), app_context());
@@ -553,6 +575,18 @@ void EmulatorApp::EmulatorThread() {
         XELOGE("Unable to register cache path");
       } else {
         emulator_->file_system()->RegisterSymbolicLink("cache:", "\\CACHE");
+      }
+    }
+
+    auto mu_device =
+        std::make_unique<xe::vfs::HostPathDevice>("\\MU", "mu", false);
+    if (!mu_device->Initialize()) {
+      XELOGE("Unable to scan MU path");
+    } else {
+      if (!emulator_->file_system()->RegisterDevice(std::move(mu_device))) {
+        XELOGE("Unable to register MU path");
+      } else {
+        emulator_->file_system()->RegisterSymbolicLink("MU:", "\\MU");
       }
     }
   }

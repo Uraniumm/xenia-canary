@@ -16,6 +16,12 @@
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/window.h"
 
+DEFINE_bool(keyboard_passthru, true,
+            "Maybe useful for debug games, disables keyboard->gamepad "
+            "emulation and forwards exact keyboard events to game (note that "
+            "Xenia keybinds, eg. H to show FPS, will still be in effect!)",
+            "HID");
+
 #define XE_HID_WINKEY_BINDING(button, description, cvar_name, \
                               cvar_default_value)             \
   DEFINE_string(cvar_name, cvar_default_value,                \
@@ -97,11 +103,40 @@ WinKeyInputDriver::~WinKeyInputDriver() {
   window()->RemoveInputListener(&window_input_listener_);
 }
 
-X_STATUS WinKeyInputDriver::Setup() { return X_STATUS_SUCCESS; }
+// X_STATUS WinKeyInputDriver::Setup() { return X_STATUS_SUCCESS; }
+X_STATUS WinKeyInputDriver::Setup(
+    std::vector<std::unique_ptr<InputDriver>>& drivers) {
+  int index = 0;
+  X_INPUT_STATE state;
+
+  // Search already added drivers for an index that none of them can use
+  while (index < 4) {
+    bool not_connected = false;
+
+    for (auto& driver : drivers) {
+      if (driver.get()->GetState(index, &state) !=
+          X_ERROR_DEVICE_NOT_CONNECTED) {
+        not_connected = false;
+        break;
+      }
+      not_connected = true;
+    }
+
+    if (not_connected) {
+      user_index_ = index;
+      return X_STATUS_SUCCESS;
+    }
+    index++;
+  }
+  user_index_ = -1;
+  return X_ERROR_DEVICE_NOT_CONNECTED;
+}
+
 
 X_RESULT WinKeyInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
                                             X_INPUT_CAPABILITIES* out_caps) {
-  if (user_index != 0) {
+  // if (user_index != 0) {
+  if (!cvars::keyboard_passthru && user_index != user_index_) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
@@ -123,7 +158,8 @@ X_RESULT WinKeyInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
 
 X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
                                      X_INPUT_STATE* out_state) {
-  if (user_index != 0) {
+  // if (user_index != 0) {
+  if (user_index != user_index_ || cvars::keyboard_passthru) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
@@ -238,7 +274,8 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
 
 X_RESULT WinKeyInputDriver::SetState(uint32_t user_index,
                                      X_INPUT_VIBRATION* vibration) {
-  if (user_index != 0) {
+  // if (user_index != 0) {
+  if (user_index != user_index_) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
@@ -247,7 +284,8 @@ X_RESULT WinKeyInputDriver::SetState(uint32_t user_index,
 
 X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
                                          X_INPUT_KEYSTROKE* out_keystroke) {
-  if (user_index != 0) {
+  // if (user_index != 0) {
+  if (!cvars::keyboard_passthru && user_index != user_index_) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
@@ -275,6 +313,12 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
   }
 
   bool capital = IsKeyToggled(VK_CAPITAL) || IsKeyDown(VK_SHIFT);
+  /*for (const KeyBinding& b : key_bindings_) {
+    if (b.input_key == evt.virtual_key &&
+        ((b.lowercase == b.uppercase) || (b.lowercase && !capital) ||
+         (b.uppercase && capital))) {
+      xinput_virtual_key = b.output_key;
+    }*/
   for (const KeyBinding& b : key_bindings_) {
     if (b.input_key == evt.virtual_key &&
         ((b.lowercase == b.uppercase) || (b.lowercase && !capital) ||
@@ -283,16 +327,38 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
     }
   }
 
+  if (cvars::keyboard_passthru) {
+    xinput_virtual_key = evt.virtual_key;
+  }
+
   if (xinput_virtual_key != ui::VirtualKey::kNone) {
     if (evt.transition == true) {
       keystroke_flags |= 0x0001;  // XINPUT_KEYSTROKE_KEYDOWN
+      if (evt.prev_state == evt.transition) {
+        keystroke_flags |= 0x0004;  // XINPUT_KEYSTROKE_REPEAT
+      }
     } else if (evt.transition == false) {
       keystroke_flags |= 0x0002;  // XINPUT_KEYSTROKE_KEYUP
     }
 
-    if (evt.prev_state == evt.transition) {
-      keystroke_flags |= 0x0004;  // XINPUT_KEYSTROKE_REPEAT
+    // if (evt.prev_state == evt.transition) {
+    //  keystroke_flags |= 0x0004;  // XINPUT_KEYSTROKE_REPEAT
+    // }
+    if (cvars::keyboard_passthru) {
+      GetKeyState(VK_SHIFT);
+      GetKeyState(VK_MENU);
+      GetKeyboardState(key_map_);
+      WCHAR buf;
+      if (ToUnicode(uint8_t(xinput_virtual_key), hid_code, key_map_, &buf, 2,
+                    0) == 1) {
+          unicode = buf;
+      }
     }
+
+    if (keystroke_flags) {
+      result = X_ERROR_SUCCESS;
+    }
+    // result = X_ERROR_SUCCESS;
 
     result = X_ERROR_SUCCESS;
   }
@@ -300,7 +366,8 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
   out_keystroke->virtual_key = uint16_t(xinput_virtual_key);
   out_keystroke->unicode = unicode;
   out_keystroke->flags = keystroke_flags;
-  out_keystroke->user_index = 0;
+  // out_keystroke->user_index = 0;
+  out_keystroke->user_index = user_index_;
   out_keystroke->hid_code = hid_code;
 
   // X_ERROR_EMPTY if no new keys

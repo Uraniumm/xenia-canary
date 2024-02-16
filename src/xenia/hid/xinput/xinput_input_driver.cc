@@ -45,7 +45,9 @@ XInputInputDriver::~XInputInputDriver() {
   }
 }
 
-X_STATUS XInputInputDriver::Setup() {
+// X_STATUS XInputInputDriver::Setup() {
+X_STATUS XInputInputDriver::Setup(
+    std::vector<std::unique_ptr<InputDriver>>& drivers) {
   HMODULE module = LoadLibraryW(L"xinput1_4.dll");
   if (!module) {
     return X_STATUS_DLL_NOT_FOUND;

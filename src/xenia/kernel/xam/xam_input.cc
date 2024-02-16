@@ -64,7 +64,9 @@ dword_result_t XamInputGetCapabilitiesEx_entry(
     // should trap
   }
 
-  if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0 &&
+      (flags & XINPUT_FLAG_KEYBOARD) == 0) {
     // Ignore any query for other types of devices.
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -102,7 +104,9 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
 
   // Games call this with a NULL state ptr, probably as a query.
 
-  if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0 &&
+      (flags & XINPUT_FLAG_KEYBOARD) == 0) {
     // Ignore any query for other types of devices.
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -116,7 +120,8 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
 
   auto input_system = kernel_state()->emulator()->input_system();
   auto lock = input_system->lock();
-  return input_system->GetState(user_index, input_state);
+  // return input_system->GetState(user_index, input_state);
+  return input_system->GetState(actual_user_index, input_state);
 }
 DECLARE_XAM_EXPORT2(XamInputGetState, kInput, kImplemented, kHighFrequency);
 
@@ -140,7 +145,8 @@ dword_result_t XamInputSetState_entry(
 
   auto input_system = kernel_state()->emulator()->input_system();
   auto lock = input_system->lock();
-  return input_system->SetState(user_index, vibration);
+  // return input_system->SetState(user_index, vibration);
+  return input_system->SetState(actual_user_index, vibration);
 }
 DECLARE_XAM_EXPORT1(XamInputSetState, kInput, kImplemented);
 
@@ -155,7 +161,9 @@ dword_result_t XamInputGetKeystroke_entry(
     return X_ERROR_BAD_ARGUMENTS;
   }
 
-  if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0 &&
+      (flags & XINPUT_FLAG_KEYBOARD) == 0) {
     // Ignore any query for other types of devices.
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -180,7 +188,9 @@ dword_result_t XamInputGetKeystrokeEx_entry(
     return X_ERROR_BAD_ARGUMENTS;
   }
 
-  if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  //if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0 &&
+        (flags & XINPUT_FLAG_KEYBOARD) == 0) {
     // Ignore any query for other types of devices.
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -229,14 +239,21 @@ X_HRESULT_result_t XamUserGetDeviceContext_entry(dword_t user_index,
       (user_index & 0xFF) == 0xFF) {
     *out_ptr = (uint32_t)user_index;
     return X_E_SUCCESS;
-  } else {
-    return X_E_DEVICE_NOT_CONNECTED;
-  }
+  } //else {
+    // return X_E_DEVICE_NOT_CONNECTED;
+    uint32_t actual_user_index = user_index;
+    if ((user_index & 0xFF) == 0xFF) 
+        actual_user_index = 0;
+  //}
+  auto input_system = kernel_state()->emulator()->input_system();
+  X_INPUT_STATE state;
+  return input_system->GetState(actual_user_index, &state);
 }
 DECLARE_XAM_EXPORT1(XamUserGetDeviceContext, kInput, kStub);
-
+void RegisterInputExports(xe::cpu::ExportResolver* export_resolver,
+                          KernelState* kernel_state) {}
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
 
-DECLARE_XAM_EMPTY_REGISTER_EXPORTS(Input);
+// DECLARE_XAM_EMPTY_REGISTER_EXPORTS(Input);

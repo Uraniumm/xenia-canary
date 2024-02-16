@@ -32,7 +32,9 @@ class InputDriver {
  public:
   virtual ~InputDriver() = default;
 
-  virtual X_STATUS Setup() = 0;
+  // virtual X_STATUS Setup() = 0;
+  virtual X_STATUS Setup(
+      std::vector<std::unique_ptr<hid::InputDriver>>& drivers) = 0;
 
   virtual X_RESULT GetCapabilities(uint32_t user_index, uint32_t flags,
                                    X_INPUT_CAPABILITIES* out_caps) = 0;
