@@ -38,6 +38,9 @@ DEFINE_uint32(max_signed_profiles, 4,
               "Limits how many profiles can be assigned. Possible values: 1-4",
               "Kernel");
 
+DEFINE_uint32(kernel_build_version, 1888, "Define current kernel version",
+              "Kernel");
+
 namespace xe {
 namespace kernel {
 
@@ -66,6 +69,7 @@ KernelState::KernelState(Emulator* emulator)
   user_profiles_.emplace(0, std::make_unique<xam::UserProfile>(0));
 
   InitializeKernelGuestGlobals();
+  kernel_version_ = KernelVersion(cvars::kernel_build_version);
 
   auto content_root = emulator_->content_root();
   if (!content_root.empty()) {
@@ -1318,7 +1322,7 @@ void KernelState::InitializeKernelGuestGlobals() {
   block->ObSymbolicLinkObjectType.delete_proc =
       kernel_trampoline_group_.NewLongtermTrampoline(DeleteSymlink);
 
-#define offsetof32(s, m) static_cast<uint32_t>( offsetof(s, m) )
+#define offsetof32(s, m) static_cast<uint32_t>(offsetof(s, m))
 
   host_object_type_enum_to_guest_object_type_ptr_ = {
       {XObject::Type::Event,

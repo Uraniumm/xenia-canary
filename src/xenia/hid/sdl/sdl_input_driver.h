@@ -16,6 +16,7 @@
 #include <optional>
 
 #include "SDL.h"
+#include "third_party/rapidcsv/src/rapidcsv.h"
 #include "xenia/hid/input_driver.h"
 
 #define HID_SDL_USER_COUNT 4
@@ -35,6 +36,8 @@ class SDLInputDriver final : public InputDriver {
 
   // X_STATUS Setup() override;
   X_STATUS Setup(std::vector<std::unique_ptr<InputDriver>>& drivers) override;
+
+  void LoadGameControllerDB();
 
   X_RESULT GetCapabilities(uint32_t user_index, uint32_t flags,
                            X_INPUT_CAPABILITIES* out_caps) override;
@@ -85,7 +88,6 @@ class SDLInputDriver final : public InputDriver {
   int sdl_events_unflushed_;
   std::atomic<bool> sdl_pumpevents_queued_;
   std::array<ControllerState, HID_SDL_USER_COUNT> controllers_;
-  std::mutex controllers_mutex_;
   std::array<KeystrokeState, HID_SDL_USER_COUNT> keystroke_states_;
 };
 

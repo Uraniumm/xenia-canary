@@ -10,8 +10,8 @@
 #include "xenia/kernel/xam/content_manager.h"
 
 #include <array>
-#include <string>
 #include <set>
+#include <string>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/filesystem.h"
@@ -307,9 +307,7 @@ X_RESULT ContentManager::GetContentThumbnail(
   auto thumb_path = package_path / kThumbnailFileName;
   if (std::filesystem::exists(thumb_path)) {
     auto file = xe::filesystem::OpenFile(thumb_path, "rb");
-    fseek(file, 0, SEEK_END);
-    size_t file_len = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    size_t file_len = std::filesystem::file_size(thumb_path);
     buffer->resize(file_len);
     fread(const_cast<uint8_t*>(buffer->data()), 1, buffer->size(), file);
     fclose(file);
