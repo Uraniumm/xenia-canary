@@ -360,9 +360,9 @@ std::vector<std::unique_ptr<hid::InputDriver>> EmulatorApp::CreateInputDrivers(
         xe::hid::nop::Create(window, EmulatorWindow::kZOrderHidInput));
   } else {
     Factory<hid::InputDriver, ui::Window*, size_t> factory;
-//#if XE_PLATFORM_WIN32
-//    factory.Add("xinput", xe::hid::xinput::Create);
-//#endif  // XE_PLATFORM_WIN32
+// #if XE_PLATFORM_WIN32
+//     factory.Add("xinput", xe::hid::xinput::Create);
+// #endif  // XE_PLATFORM_WIN32
 #if !XE_PLATFORM_ANDROID
     factory.Add("sdl", xe::hid::sdl::Create);
 #endif  // !XE_PLATFORM_ANDROID
@@ -464,8 +464,8 @@ bool EmulatorApp::OnInitialize() {
   }
 
   // Create the emulator but don't initialize so we can setup the window.
-  emulator_ =
-      std::make_unique<Emulator>("", storage_root, content_root, cache_root, mu_root);
+  emulator_ = std::make_unique<Emulator>("", storage_root, content_root,
+                                         cache_root, mu_root);
 
   // Main emulator display window.
   emulator_window_ = EmulatorWindow::Create(emulator_.get(), app_context());

@@ -61,10 +61,10 @@ DEFINE_uint32(log_mask, 0,
               "Kernel = 1, Apu = 2, Cpu = 4.",
               "Logging");
 
-DEFINE_int32(
-    log_level, -1,
-    "Maximum level to be logged. (-1=disabled, 0=error, 1=warning, 2=info, 3=debug)",
-    "Logging");
+DEFINE_int32(log_level, -1,
+             "Maximum level to be logged. (-1=disabled, 0=error, 1=warning, "
+             "2=info, 3=debug)",
+             "Logging");
 
 namespace dp = disruptorplus;
 using namespace xe::literals;

@@ -132,7 +132,6 @@ X_STATUS WinKeyInputDriver::Setup(
   return X_ERROR_DEVICE_NOT_CONNECTED;
 }
 
-
 X_RESULT WinKeyInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
                                             X_INPUT_CAPABILITIES* out_caps) {
   // if (user_index != 0) {
@@ -351,7 +350,7 @@ X_RESULT WinKeyInputDriver::GetKeystroke(uint32_t user_index, uint32_t flags,
       WCHAR buf;
       if (ToUnicode(uint8_t(xinput_virtual_key), hid_code, key_map_, &buf, 2,
                     0) == 1) {
-          unicode = buf;
+        unicode = buf;
       }
     }
 

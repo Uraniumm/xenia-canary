@@ -64,7 +64,8 @@ dword_result_t XamInputGetCapabilitiesEx_entry(
     // should trap
   }
 
-  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
+  // {
   if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0 &&
       (flags & XINPUT_FLAG_KEYBOARD) == 0) {
     // Ignore any query for other types of devices.
@@ -104,7 +105,8 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
 
   // Games call this with a NULL state ptr, probably as a query.
 
-  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
+  // {
   if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0 &&
       (flags & XINPUT_FLAG_KEYBOARD) == 0) {
     // Ignore any query for other types of devices.
@@ -161,7 +163,8 @@ dword_result_t XamInputGetKeystroke_entry(
     return X_ERROR_BAD_ARGUMENTS;
   }
 
-  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
+  // {
   if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0 &&
       (flags & XINPUT_FLAG_KEYBOARD) == 0) {
     // Ignore any query for other types of devices.
@@ -188,9 +191,10 @@ dword_result_t XamInputGetKeystrokeEx_entry(
     return X_ERROR_BAD_ARGUMENTS;
   }
 
-  //if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
+  // if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0)
+  // {
   if ((flags & 0xFF) && (flags & XINPUT_FLAG_GAMEPAD) == 0 &&
-        (flags & XINPUT_FLAG_KEYBOARD) == 0) {
+      (flags & XINPUT_FLAG_KEYBOARD) == 0) {
     // Ignore any query for other types of devices.
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
@@ -239,11 +243,10 @@ X_HRESULT_result_t XamUserGetDeviceContext_entry(dword_t user_index,
       (user_index & 0xFF) == 0xFF) {
     *out_ptr = (uint32_t)user_index;
     return X_E_SUCCESS;
-  } //else {
-    // return X_E_DEVICE_NOT_CONNECTED;
-    uint32_t actual_user_index = user_index;
-    if ((user_index & 0xFF) == 0xFF) 
-        actual_user_index = 0;
+  }  // else {
+  // return X_E_DEVICE_NOT_CONNECTED;
+  uint32_t actual_user_index = user_index;
+  if ((user_index & 0xFF) == 0xFF) actual_user_index = 0;
   //}
   auto input_system = kernel_state()->emulator()->input_system();
   X_INPUT_STATE state;

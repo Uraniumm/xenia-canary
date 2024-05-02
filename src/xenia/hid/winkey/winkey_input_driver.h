@@ -35,6 +35,7 @@ class WinKeyInputDriver final : public InputDriver {
   X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags,
                         X_INPUT_KEYSTROKE* out_keystroke) override;
   void user_index(uint32_t index) { user_index_ = index; }
+
  protected:
   struct KeyEvent {
     ui::VirtualKey virtual_key = ui::VirtualKey::kNone;
