@@ -8,7 +8,7 @@
  */
 
 #include "xenia/base/string.h"
-
+#include "xenia/base/cvar.h"
 #include <string.h>
 #include <algorithm>
 #include <locale>
@@ -23,7 +23,11 @@
 #include "third_party/utfcpp/source/utf8.h"
 
 namespace utfcpp = utf8;
-
+DEFINE_bool(megahalogame_utf16to8, false,
+            "Catch the invalid_utf16 exception and return an empty string. "
+            "Crash occurs when a player approaches interactable objects in "
+            "MegaHaloGame/Backyard Heroes. Only for use with MHG/BAM/Haggar.",
+            "HACKS");
 namespace xe {
 
 int xe_strcasecmp(const char* string1, const char* string2) {
@@ -51,6 +55,13 @@ char* xe_strdup(const char* source) {
 }
 
 std::string to_utf8(const std::u16string_view source) {
+  if (cvars::megahalogame_utf16to8) {
+    try {
+      return utfcpp::utf16to8(source);
+    } catch (utfcpp::invalid_utf16& e) {
+      return std::string{""};
+    }
+  }
   return utfcpp::utf16to8(source);
 }
 

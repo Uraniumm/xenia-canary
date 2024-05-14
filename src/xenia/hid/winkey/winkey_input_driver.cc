@@ -16,7 +16,7 @@
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/window.h"
 
-DEFINE_bool(keyboard_passthru, true,
+DEFINE_bool(keyboard_passthru, false,
             "Maybe useful for debug games, disables keyboard->gamepad "
             "emulation and forwards exact keyboard events to game (note that "
             "Xenia keybinds, eg. H to show FPS, will still be in effect!)",
