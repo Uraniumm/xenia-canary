@@ -577,7 +577,9 @@ void EmulatorApp::EmulatorThread() {
         emulator_->file_system()->RegisterSymbolicLink("cache:", "\\CACHE");
       }
     }
+  }
 
+  if (cvars::mount_mu) {
     auto mu_device =
         std::make_unique<xe::vfs::HostPathDevice>("\\MU", "mu", false);
     if (!mu_device->Initialize()) {

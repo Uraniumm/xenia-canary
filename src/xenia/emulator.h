@@ -93,8 +93,8 @@ class Emulator {
   explicit Emulator(const std::filesystem::path& command_line,
                     const std::filesystem::path& storage_root,
                     const std::filesystem::path& content_root,
-                    const std::filesystem::path& mu_root,
-                    const std::filesystem::path& cache_root);
+                    const std::filesystem::path& cache_root,
+                    const std::filesystem::path& mu_root);
   ~Emulator();
 
   // Full command line used when launching the process.
@@ -108,6 +108,9 @@ class Emulator {
 
   // Folder files safe to remove without significant side effects are stored in.
   const std::filesystem::path& cache_root() const { return cache_root_; }
+
+  // Fuck around and find out with the memory unit.
+  const std::filesystem::path& mu_root() const { return mu_root_; }
 
   // Name of the title in the default language.
   const std::string& title_name() const { return title_name_; }
