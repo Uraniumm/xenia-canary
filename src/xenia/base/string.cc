@@ -12,7 +12,7 @@
 #include <string.h>
 #include <algorithm>
 #include <locale>
-
+#include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 
 #if !XE_PLATFORM_WIN32
@@ -59,7 +59,9 @@ std::string to_utf8(const std::u16string_view source) {
     try {
       return utfcpp::utf16to8(source);
     } catch (utfcpp::invalid_utf16& e) {
-      return std::string{""};
+      XELOGE("Attempted to convert an invalid UTF-16 string to UTF-8. Error: {}", e.what());
+      std::string result;
+      return result;
     }
   }
   return utfcpp::utf16to8(source);
