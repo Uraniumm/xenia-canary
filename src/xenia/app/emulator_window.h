@@ -54,7 +54,8 @@ class EmulatorWindow {
   virtual ~EmulatorWindow();
 
   static std::unique_ptr<EmulatorWindow> Create(
-      Emulator* emulator, ui::WindowedAppContext& app_context);
+      Emulator* emulator, ui::WindowedAppContext& app_context, uint32_t width,
+      uint32_t height);
 
   std::unique_ptr<xe::threading::Thread> Gamepad_HotKeys_Listener;
 
@@ -86,6 +87,11 @@ class EmulatorWindow {
   void SetFullscreen(bool fullscreen);
   void ToggleFullscreen();
   void SetInitializingShaderStorage(bool initializing);
+
+  void TakeScreenshot();
+  void ExportScreenshot(const xe::ui::RawImage& image);
+  void SaveImage(const std::filesystem::path& path,
+                 const xe::ui::RawImage& image);
 
   // Types of button functions for hotkeys.
   enum class ButtonFunctions {
@@ -178,7 +184,8 @@ class EmulatorWindow {
   };
 
   explicit EmulatorWindow(Emulator* emulator,
-                          ui::WindowedAppContext& app_context);
+                          ui::WindowedAppContext& app_context, uint32_t width,
+                          uint32_t height);
 
   bool Initialize();
 

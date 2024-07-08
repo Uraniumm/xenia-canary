@@ -111,7 +111,7 @@ DECLARE_XAM_EXPORT1(XamUserGetSigninInfo, kUserProfiles, kImplemented);
 dword_result_t XamUserGetName_entry(dword_t user_index, lpstring_t buffer,
                                     dword_t buffer_len) {
   if (user_index >= 4) {
-    return X_E_INVALIDARG;
+    return X_ERROR_INVALID_PARAMETER;
   }
 
   if (kernel_state()->IsUserSignedIn(user_index)) {
@@ -120,9 +120,10 @@ dword_result_t XamUserGetName_entry(dword_t user_index, lpstring_t buffer,
     xe::string_util::copy_truncating(
         buffer, user_name, std::min(buffer_len.value(), uint32_t(16)));
   } else {
-    return X_E_NO_SUCH_USER;
+    *buffer = 0;
+    return X_ERROR_NO_SUCH_USER;
   }
-  return X_E_SUCCESS;
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserGetName, kUserProfiles, kImplemented);
 
@@ -541,18 +542,25 @@ dword_result_t XamUserAreUsersFriends_entry(dword_t user_index, dword_t unk1,
 }
 DECLARE_XAM_EXPORT1(XamUserAreUsersFriends, kUserProfiles, kStub);
 
-dword_result_t XamShowSigninUI_entry(dword_t unk, dword_t unk_mask) {
+dword_result_t XamShowSigninUI_entry(dword_t users_needed, dword_t unk_mask) {
+  // XN_SYS_UI (on)
   kernel_state()->BroadcastNotification(0x00000009, 1);
   kernel_state()->UpdateUsedUserProfiles();
   // Mask values vary. Probably matching user types? Local/remote?
   // Games seem to sit and loop until we trigger this notification:
+  uint32_t user_mask = 0;
+  uint32_t active_users = 0;
 
   for (uint32_t i = 0; i < 4; i++) {
     if (kernel_state()->IsUserSignedIn(i)) {
-      // XN_SYS_SIGNINCHANGED
-      kernel_state()->BroadcastNotification(0xA, i);
+      user_mask |= (1 << i);
+      active_users++;
+      if (active_users >= users_needed) break;
     }
   }
+
+  // XN_SYS_SIGNINCHANGED (players)
+  kernel_state()->BroadcastNotification(0xA, user_mask);
 
   // XN_SYS_UI (off)
   kernel_state()->BroadcastNotification(0x00000009, 0);

@@ -67,6 +67,9 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
   kernel_state_ = kernel_state;
   app_context_ = app_context;
 
+  scaled_aspect_x_ = 16;
+  scaled_aspect_y_ = 9;
+
   if (provider_) {
     // Safe if either the UI thread call or the presenter creation fails.
     if (app_context_) {
@@ -258,7 +261,7 @@ uint32_t GraphicsSystem::ReadRegister(uint32_t addr) {
   }
 
   assert_true(r < RegisterFile::kRegisterCount);
-  return register_file()->values[r].u32;
+  return register_file()->values[r];
 }
 
 void GraphicsSystem::WriteRegister(uint32_t addr, uint32_t value) {
@@ -276,7 +279,7 @@ void GraphicsSystem::WriteRegister(uint32_t addr, uint32_t value) {
   }
 
   assert_true(r < RegisterFile::kRegisterCount);
-  this->register_file()->values[r].u32 = value;
+  this->register_file()->values[r] = value;
 }
 
 void GraphicsSystem::InitializeRingBuffer(uint32_t ptr, uint32_t size_log2) {

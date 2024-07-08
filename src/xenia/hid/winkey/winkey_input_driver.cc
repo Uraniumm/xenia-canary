@@ -31,6 +31,9 @@ DEFINE_bool(keyboard_passthru, false,
 #include "winkey_binding_table.inc"
 #undef XE_HID_WINKEY_BINDING
 
+DEFINE_int32(keyboard_user_index, 0, "Controller port that keyboard emulates",
+             "HID.WinKey");
+
 namespace xe {
 namespace hid {
 namespace winkey {
@@ -135,7 +138,7 @@ X_STATUS WinKeyInputDriver::Setup(
 X_RESULT WinKeyInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
                                             X_INPUT_CAPABILITIES* out_caps) {
   // if (user_index != 0) {
-  if (!cvars::keyboard_passthru && user_index != user_index_) {
+  if (!cvars::keyboard_passthru && user_index != cvars::keyboard_user_index) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
@@ -158,7 +161,7 @@ X_RESULT WinKeyInputDriver::GetCapabilities(uint32_t user_index, uint32_t flags,
 X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
                                      X_INPUT_STATE* out_state) {
   // if (user_index != 0) {
-  if (user_index != user_index_ || cvars::keyboard_passthru) {
+  if (user_index != cvars::keyboard_user_index || cvars::keyboard_passthru) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
@@ -273,8 +276,7 @@ X_RESULT WinKeyInputDriver::GetState(uint32_t user_index,
 
 X_RESULT WinKeyInputDriver::SetState(uint32_t user_index,
                                      X_INPUT_VIBRATION* vibration) {
-  // if (user_index != 0) {
-  if (user_index != user_index_) {
+  if (user_index != cvars::keyboard_user_index) {
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 

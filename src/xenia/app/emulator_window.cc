@@ -17,8 +17,10 @@
 #include <utility>
 
 #include "third_party/cpptoml/include/cpptoml.h"
+#include "third_party/fmt/include/fmt/chrono.h"
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/imgui/imgui.h"
+#include "third_party/stb/stb_image_write.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
@@ -159,11 +161,12 @@ const std::string kRecentlyPlayedTitlesFilename = "recent.toml";
 const std::string kBaseTitle = "Xenia-canary";
 
 EmulatorWindow::EmulatorWindow(Emulator* emulator,
-                               ui::WindowedAppContext& app_context)
+                               ui::WindowedAppContext& app_context,
+                               uint32_t width, uint32_t height)
     : emulator_(emulator),
       app_context_(app_context),
       window_listener_(*this),
-      window_(ui::Window::Create(app_context, kBaseTitle, 1280, 720)),
+      window_(ui::Window::Create(app_context, kBaseTitle, width, height)),
       imgui_drawer_(
           std::make_unique<ui::ImGuiDrawer>(window_.get(), kZOrderImGui)),
       display_config_game_config_load_callback_(
@@ -188,10 +191,11 @@ EmulatorWindow::EmulatorWindow(Emulator* emulator,
 }
 
 std::unique_ptr<EmulatorWindow> EmulatorWindow::Create(
-    Emulator* emulator, ui::WindowedAppContext& app_context) {
+    Emulator* emulator, ui::WindowedAppContext& app_context, uint32_t width,
+    uint32_t height) {
   assert_true(app_context.IsInUIThread());
   std::unique_ptr<EmulatorWindow> emulator_window(
-      new EmulatorWindow(emulator, app_context));
+      new EmulatorWindow(emulator, app_context, width, height));
   if (!emulator_window->Initialize()) {
     return nullptr;
   }
@@ -649,6 +653,9 @@ bool EmulatorWindow::Initialize() {
     display_menu->AddChild(
         MenuItem::Create(MenuItem::Type::kString, "&Fullscreen", "F11",
                          std::bind(&EmulatorWindow::ToggleFullscreen, this)));
+    display_menu->AddChild(
+        MenuItem::Create(MenuItem::Type::kString, "&Take Screenshot", "F10",
+                         std::bind(&EmulatorWindow::TakeScreenshot, this)));
   }
   main_menu->AddChild(std::move(display_menu));
 
@@ -833,6 +840,10 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
     case ui::VirtualKey::kF11: {
       ToggleFullscreen();
     } break;
+    case ui::VirtualKey::kF10: {
+      TakeScreenshot();
+    } break;
+
     case ui::VirtualKey::kEscape: {
       // Allow users to escape fullscreen (but not enter it).
       if (!window_->IsFullscreen()) {
@@ -888,6 +899,71 @@ void EmulatorWindow::OnMouseDown(const ui::MouseEvent& e) {
 
 void EmulatorWindow::OnMouseUp(const ui::MouseEvent& e) {
   last_mouse_up = steady_clock::now();
+}
+
+void EmulatorWindow::TakeScreenshot() {
+  xe::ui::RawImage image;
+  if (!GetGraphicsSystemPresenter()->CaptureGuestOutput(image) ||
+      GetGraphicsSystemPresenter() == nullptr) {
+    XELOGE("Failed to capture guest output for screenshot");
+    return;
+  }
+  ExportScreenshot(image);
+}
+
+void EmulatorWindow::ExportScreenshot(const xe::ui::RawImage& image) {
+  auto t = std::time(nullptr);
+
+  // The format is: Year-Month-DayTHours-Minutes-Seconds based off ISO 8601
+  std::string datetime = fmt::format("{:%Y-%m-%dT%H-%M-%S}", fmt::localtime(t));
+
+  // Get the title id of the game because some titles contain characters that
+  // cannot be used as a directory
+  std::string title_id;
+  if (emulator()->title_id()) {
+    title_id = fmt::format("{:08X}", emulator()->title_id());
+  } else {
+    XELOGE("Failed to get the current title id");
+    return;
+  }
+
+  // Find where xenia.exe or xenia_canary.exe is located and create a
+  // screenshots folder
+  auto screenshot_path =
+      (xe::filesystem::GetExecutableFolder() / "screenshots" / title_id);
+
+  if (!std::filesystem::exists(screenshot_path)) {
+    std::filesystem::create_directories(screenshot_path);
+  }
+
+  std::string filename = fmt::format("{} - {}.png", title_id, datetime);
+  SaveImage(screenshot_path / filename, image);
+
+  xe::ui::ImGuiDialog::ShowMessageBox(
+      imgui_drawer_.get(), "Screenshot saved",
+      fmt::format("Screenshot saved to {}", xe::path_to_utf8(screenshot_path)));
+}
+
+// Converts a RawImage into a PNG file
+void EmulatorWindow::SaveImage(const std::filesystem::path& filepath,
+                               const xe::ui::RawImage& image) {
+  auto file = std::ofstream(filepath, std::ios::binary);
+  if (!file.is_open()) {
+    XELOGE("Failed to open file for writing: {}", xe::path_to_utf8(filepath));
+    return;
+  }
+
+  auto result = stbi_write_png_to_func(
+      [](void* context, void* data, int size) {
+        auto file = reinterpret_cast<std::ofstream*>(context);
+        file->write(reinterpret_cast<const char*>(data), size);
+      },
+      &file, image.width, image.height, 4, image.data.data(),
+      (int)image.stride);
+  if (result == 0) {
+    XELOGE("Failed to write PNG to file: {}", xe::path_to_utf8(filepath));
+    return;
+  }
 }
 
 void EmulatorWindow::ToggleFullscreenOnDoubleClick() {
@@ -971,20 +1047,58 @@ void EmulatorWindow::InstallContent() {
     return;
   }
 
-  for (auto path : paths) {
+  using content_installation_data =
+      std::tuple<X_STATUS, std::string, std::string>;
+  std::map<XContentType, std::vector<content_installation_data>>
+      content_installation_details;
+
+  for (const auto& path : paths) {
     // Normalize the path and make absolute.
     auto abs_path = std::filesystem::absolute(path);
-    auto result = emulator_->InstallContentPackage(abs_path);
 
-    if (result != X_STATUS_SUCCESS) {
-      XELOGE("Failed to install content! Error code: {:08X}", result);
+    Emulator::ContentInstallationInfo installation_info;
+    auto result = emulator_->InstallContentPackage(abs_path, installation_info);
 
-      xe::ui::ImGuiDialog::ShowMessageBox(
-          imgui_drawer_.get(), "Failed to install content!",
-          "Failed to install content!\n\nCheck xenia.log for technical "
-          "details.");
-    }
+    auto entry =
+        content_installation_details.find(installation_info.content_type);
+
+    // There is no entry with that specific type of XContent, so we must add it.
+    if (entry == content_installation_details.end()) {
+      content_installation_details.insert({installation_info.content_type, {}});
+      entry = content_installation_details.find(installation_info.content_type);
+    };
+
+    entry->second.push_back({result, installation_info.content_name,
+                             installation_info.installation_path});
   }
+
+  // Prepare installation process summary message
+  std::string summary = "Installation result: \n";
+
+  for (const auto& content_type : content_installation_details) {
+    if (XContentTypeMap.find(content_type.first) != XContentTypeMap.cend()) {
+      summary += XContentTypeMap.at(content_type.first) + ":\n";
+    } else {
+      summary += "Unknown:\n";
+    }
+
+    for (const auto& content_installation_entry : content_type.second) {
+      const std::string status =
+          std::get<0>(content_installation_entry) == X_STATUS_SUCCESS
+              ? "Success"
+              : fmt::format("Failed (0x{:08X})",
+                            std::get<0>(content_installation_entry));
+
+      summary += fmt::format("\t{} - {} => {}\n", status,
+                             std::get<1>(content_installation_entry),
+                             std::get<2>(content_installation_entry));
+    }
+
+    summary += "\n";
+  }
+
+  xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(),
+                                      "Content Installation Summary", summary);
 }
 
 void EmulatorWindow::ExtractZarchive() {
@@ -1740,6 +1854,8 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path_to_file) {
     xe::ui::ImGuiDialog::ShowMessageBox(
         imgui_drawer_.get(), "Title Launch Failed!",
         "Failed to launch title.\n\nCheck xenia.log for technical details.");
+
+    emulator_->file_system()->Clear();
   } else {
     AddRecentlyLaunchedTitle(path_to_file, emulator_->title_name());
 

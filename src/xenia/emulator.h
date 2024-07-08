@@ -227,8 +227,15 @@ class Emulator {
 
   X_STATUS LaunchDefaultModule(const std::filesystem::path& path);
 
+  struct ContentInstallationInfo {
+    XContentType content_type;
+    std::string installation_path;
+    std::string content_name;
+  };
+
   // Extract content of package to content specific directory.
-  X_STATUS InstallContentPackage(const std::filesystem::path& path);
+  X_STATUS InstallContentPackage(const std::filesystem::path& path,
+                                 ContentInstallationInfo& installation_info);
 
   // Extract content of zar package to desired directory.
   X_STATUS Emulator::ExtractZarchivePackage(
@@ -252,8 +259,6 @@ class Emulator {
   bool RestoreFromFile(const std::filesystem::path& path);
 
   // The game can request another title to be loaded.
-  bool TitleRequested();
-  void LaunchNextTitle();
   const std::filesystem::path GetNewDiscPath(std::string window_message = "");
 
   void WaitUntilExit();

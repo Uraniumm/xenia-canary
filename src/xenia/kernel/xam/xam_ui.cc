@@ -14,6 +14,7 @@
 #include "xenia/kernel/kernel_flags.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
@@ -21,10 +22,15 @@
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
 
+DEFINE_bool(storage_selection_dialog, false,
+            "Show storage device selection dialog when the game requests it.",
+            "UI");
+
+DECLARE_int32(license_mask);
+
 namespace xe {
 namespace kernel {
 namespace xam {
-
 // TODO(gibbed): This is all one giant WIP that seems to work better than the
 // previous immediate synchronous completion of dialogs.
 //
@@ -202,6 +208,49 @@ X_RESULT xeXamDispatchHeadlessEx(
                                                  post);
     return X_ERROR_IO_PENDING;
   }
+}
+
+template <typename T>
+X_RESULT xeXamDispatchDialogAsync(T* dialog,
+                                  std::function<void(T*)> close_callback) {
+  // Broadcast XN_SYS_UI = true
+  kernel_state()->BroadcastNotification(0x9, true);
+  ++xam_dialogs_shown_;
+
+  // Important to pass captured vars by value here since we return from this
+  // without waiting for the dialog to close so the original local vars will be
+  // destroyed.
+  // FIXME: Probably not the best idea to call Sleep in UI thread.
+  dialog->set_close_callback([dialog, close_callback]() {
+    close_callback(dialog);
+
+    --xam_dialogs_shown_;
+
+    xe::threading::Sleep(std::chrono::milliseconds(100));
+    // Broadcast XN_SYS_UI = false
+    kernel_state()->BroadcastNotification(0x9, false);
+  });
+
+  return X_ERROR_SUCCESS;
+}
+
+X_RESULT xeXamDispatchHeadlessAsync(std::function<void()> run_callback) {
+  // Broadcast XN_SYS_UI = true
+  kernel_state()->BroadcastNotification(0x9, true);
+  ++xam_dialogs_shown_;
+
+  auto display_window = kernel_state()->emulator()->display_window();
+  display_window->app_context().CallInUIThread([run_callback]() {
+    run_callback();
+
+    --xam_dialogs_shown_;
+
+    xe::threading::Sleep(std::chrono::milliseconds(100));
+    // Broadcast XN_SYS_UI = false
+    kernel_state()->BroadcastNotification(0x9, false);
+  });
+
+  return X_ERROR_SUCCESS;
 }
 
 dword_result_t XamIsUIActive_entry() { return xeXamIsUIActive(); }
@@ -526,12 +575,59 @@ dword_result_t XamShowDeviceSelectorUI_entry(
     dword_t user_index, dword_t content_type, dword_t content_flags,
     qword_t total_requested, lpdword_t device_id_ptr,
     pointer_t<XAM_OVERLAPPED> overlapped) {
-  return xeXamDispatchHeadless(
-      [device_id_ptr]() -> X_RESULT {
-        // NOTE: 0x00000001 is our dummy device ID from xam_content.cc
-        *device_id_ptr = 0x00000001;
-        return X_ERROR_SUCCESS;
-      },
+  if (!overlapped) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if ((user_index >= 4 && user_index != 0xFF) ||
+      (content_flags & 0x83F00008) != 0 || !device_id_ptr) {
+    XOverlappedSetExtendedError(overlapped, X_ERROR_INVALID_PARAMETER);
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (user_index != 0xFF && !kernel_state()->IsUserSignedIn(user_index)) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped,
+                                                X_ERROR_NO_SUCH_USER);
+    return X_ERROR_IO_PENDING;
+  }
+
+  std::vector<const DummyDeviceInfo*> devices = ListStorageDevices();
+
+  if (cvars::headless || !cvars::storage_selection_dialog) {
+    // Default to the first storage device (HDD) if headless.
+    return xeXamDispatchHeadless(
+        [device_id_ptr, devices]() -> X_RESULT {
+          if (devices.empty()) return X_ERROR_CANCELLED;
+
+          const DummyDeviceInfo* device_info = devices.front();
+          *device_id_ptr = static_cast<uint32_t>(device_info->device_id);
+          return X_ERROR_SUCCESS;
+        },
+        overlapped);
+  }
+
+  auto close = [device_id_ptr, devices](MessageBoxDialog* dialog) -> X_RESULT {
+    uint32_t button = dialog->chosen_button();
+    if (button >= devices.size()) return X_ERROR_CANCELLED;
+
+    const DummyDeviceInfo* device_info = devices.at(button);
+    *device_id_ptr = static_cast<uint32_t>(device_info->device_id);
+    return X_ERROR_SUCCESS;
+  };
+
+  std::string title = "Select storage device";
+  std::string desc = "";
+
+  cxxopts::OptionNames buttons;
+  for (auto& device_info : devices) {
+    buttons.push_back(to_utf8(device_info->name));
+  }
+  buttons.push_back("Cancel");
+
+  const Emulator* emulator = kernel_state()->emulator();
+  ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+  return xeXamDispatchDialog<MessageBoxDialog>(
+      new MessageBoxDialog(imgui_drawer, title, desc, buttons, 0), close,
       overlapped);
 }
 DECLARE_XAM_EXPORT1(XamShowDeviceSelectorUI, kUI, kImplemented);
@@ -584,6 +680,157 @@ dword_result_t XamGetDashContext_entry(const ppc_context_t& ctx) {
 }
 
 DECLARE_XAM_EXPORT1(XamGetDashContext, kNone, kImplemented);
+
+dword_result_t XamShowMarketplaceUI_entry(dword_t user_index, dword_t ui_type,
+                                          qword_t offer_id,
+                                          dword_t content_types) {
+  // ui_type:
+  // 0 - view all content for the current title
+  // 1 - view content specified by offer id
+  // content_types:
+  // always -1? check more games
+  if (user_index >= 4) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!kernel_state()->IsUserSignedIn(user_index)) {
+    return X_ERROR_NO_SUCH_USER;
+  }
+
+  if (cvars::headless) {
+    return xeXamDispatchHeadlessAsync([]() {});
+  }
+
+  auto close = [ui_type](MessageBoxDialog* dialog) -> void {
+    if (ui_type == 1) {
+      uint32_t button = dialog->chosen_button();
+      if (button == 0) {
+        cvars::license_mask = 1;
+
+        // XN_LIVE_CONTENT_INSTALLED
+        kernel_state()->BroadcastNotification(0x2000007, 0);
+      }
+    }
+  };
+
+  std::string title = "Xbox Marketplace";
+  std::string desc = "";
+  cxxopts::OptionNames buttons;
+
+  switch (ui_type) {
+    case 0:
+      desc =
+          "Game requested to open marketplace page with all content for the "
+          "current title ID.";
+      break;
+    case 1:
+      desc = fmt::format(
+          "Game requested to open marketplace page for offer ID 0x{:016X}.",
+          offer_id);
+      break;
+    default:
+      desc = fmt::format("Unknown marketplace op {:d}", ui_type);
+      break;
+  }
+
+  desc +=
+      "\nNote that since Xenia cannot access Xbox Marketplace, any DLC must be "
+      "installed manually using File -> Install Content.";
+
+  switch (ui_type) {
+    case 0:
+    default:
+      buttons.push_back("OK");
+      break;
+    case 1:
+      desc +=
+          "\n\nTo start trial games in full mode, set license_mask to 1 in "
+          "Xenia config file.\n\nDo you wish to change license_mask to 1 for "
+          "*this session*?";
+      buttons.push_back("Yes");
+      buttons.push_back("No");
+      break;
+  }
+
+  const Emulator* emulator = kernel_state()->emulator();
+  ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+  return xeXamDispatchDialogAsync<MessageBoxDialog>(
+      new MessageBoxDialog(imgui_drawer, title, desc, buttons, 0), close);
+}
+DECLARE_XAM_EXPORT1(XamShowMarketplaceUI, kUI, kSketchy);
+
+dword_result_t XamShowMarketplaceDownloadItemsUI_entry(
+    dword_t user_index, dword_t ui_type, lpqword_t offers, dword_t num_offers,
+    lpdword_t hresult_ptr, pointer_t<XAM_OVERLAPPED> overlapped) {
+  // ui_type:
+  // 1000 - free
+  // 1001 - paid
+  if (user_index >= 4 || !offers || num_offers > 6) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!kernel_state()->IsUserSignedIn(user_index)) {
+    if (overlapped) {
+      kernel_state()->CompleteOverlappedImmediate(overlapped,
+                                                  X_ERROR_NO_SUCH_USER);
+      return X_ERROR_IO_PENDING;
+    }
+    return X_ERROR_NO_SUCH_USER;
+  }
+
+  if (cvars::headless) {
+    return xeXamDispatchHeadless(
+        [hresult_ptr]() -> X_RESULT {
+          if (hresult_ptr) {
+            *hresult_ptr = X_E_SUCCESS;
+          }
+          return X_ERROR_SUCCESS;
+        },
+        overlapped);
+  }
+
+  auto close = [hresult_ptr](MessageBoxDialog* dialog) -> X_RESULT {
+    if (hresult_ptr) {
+      // TODO
+      *hresult_ptr = X_E_SUCCESS;
+    }
+    return X_ERROR_SUCCESS;
+  };
+
+  std::string title = "Xbox Marketplace";
+  std::string desc = "";
+  cxxopts::OptionNames buttons = {"OK"};
+
+  switch (ui_type) {
+    case 1000:
+      desc =
+          "Game requested to open download page for the following free offer "
+          "IDs:";
+      break;
+    case 1001:
+      desc =
+          "Game requested to open download page for the following offer IDs:";
+      break;
+    default:
+      return X_ERROR_INVALID_PARAMETER;
+  }
+
+  for (uint32_t i = 0; i < num_offers; i++) {
+    desc += fmt::format("\n0x{:16X}", offers[i]);
+  }
+
+  desc +=
+      "\n\nNote that since Xenia cannot access Xbox Marketplace, any DLC "
+      "must "
+      "be installed manually using File -> Install Content.";
+
+  const Emulator* emulator = kernel_state()->emulator();
+  ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
+  return xeXamDispatchDialog<MessageBoxDialog>(
+      new MessageBoxDialog(imgui_drawer, title, desc, buttons, 0), close,
+      overlapped);
+}
+DECLARE_XAM_EXPORT1(XamShowMarketplaceDownloadItemsUI, kUI, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel
