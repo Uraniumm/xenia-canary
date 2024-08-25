@@ -22,10 +22,16 @@
 #include "xenia/kernel/xthread.h"
 #include "xenia/vfs/device.h"
 #include "xenia/xbox.h"
+#include "xenia/base/cvar.h"
 
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
+DEFINE_bool(
+    halo_hs_doc_resolve, false,
+    "Prepend the output file target path with the game running directory to to "
+    "allow some halo builds to properly execute the script_doc command.",
+    "HACKS");
 
 struct CreateOptions {
   // https://processhacker.sourceforge.io/doc/ntioapi_8h.html
@@ -64,6 +70,12 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
 
   // Compute path, possibly attrs relative.
   auto target_path = util::TranslateAnsiString(kernel_memory(), object_name);
+  std::string_view dumpdoc = "hs_doc.txt";
+  if (cvars::halo_hs_doc_resolve) {
+    if (!target_path.compare(dumpdoc)) {
+      target_path = "d:\\hs_doc.txt";
+    }
+  }
 
   // Enforce that the path is ASCII.
   if (!IsValidPath(target_path, false)) {
