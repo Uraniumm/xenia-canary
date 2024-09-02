@@ -34,7 +34,8 @@ DEFINE_path(
     custom_font_path, "",
     "Allows user to load custom font and use it instead of default one.", "UI");
 
-DEFINE_uint32(font_size, 12, "Allows user to set custom font size.", "UI");
+DEFINE_uint32(font_size, 14, "Allows user to set custom font size.", "UI");
+UPDATE_from_uint32(font_size, 2024, 8, 31, 20, 12);
 
 namespace xe {
 namespace ui {
@@ -467,20 +468,32 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   dialog_loop_next_index_ = SIZE_MAX;
 
   if (!notifications_.empty()) {
-    bool was_guest_notification_drawn = false;
-    bool was_host_notification_drawn = false;
+    std::vector<ui::ImGuiNotification*> guest_notifications = {};
+    std::vector<ui::ImGuiNotification*> host_notifications = {};
 
-    for (const auto& notification : notifications_) {
-      if (notification->GetNotificationType() == NotificationType::Guest &&
-          !was_guest_notification_drawn) {
-        was_guest_notification_drawn = true;
-        notification->Draw();
-      }
+    std::copy_if(notifications_.cbegin(), notifications_.cend(),
+                 std::back_inserter(guest_notifications),
+                 [](ui::ImGuiNotification* notification) {
+                   return notification->GetNotificationType() ==
+                          NotificationType::Guest;
+                 });
 
-      if (notification->GetNotificationType() == NotificationType::Host &&
-          !was_host_notification_drawn) {
-        was_host_notification_drawn = true;
-        notification->Draw();
+    std::copy_if(notifications_.cbegin(), notifications_.cend(),
+                 std::back_inserter(host_notifications),
+                 [](ui::ImGuiNotification* notification) {
+                   return notification->GetNotificationType() ==
+                          NotificationType::Host;
+                 });
+
+    if (guest_notifications.size() > 0) {
+      guest_notifications.at(0)->Draw();
+    }
+
+    if (host_notifications.size() > 0) {
+      host_notifications.at(0)->Draw();
+
+      if (host_notifications.size() > 1) {
+        host_notifications.at(0)->SetDeletionPending();
       }
     }
   }

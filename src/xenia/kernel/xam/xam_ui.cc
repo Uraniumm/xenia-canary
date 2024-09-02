@@ -18,6 +18,7 @@
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
+#include "xenia/ui/imgui_guest_notification.h"
 #include "xenia/ui/window.h"
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
@@ -78,7 +79,7 @@ X_RESULT xeXamDispatchDialog(T* dialog,
                              uint32_t overlapped) {
   auto pre = []() {
     // Broadcast XN_SYS_UI = true
-    kernel_state()->BroadcastNotification(0x9, true);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, true);
   };
   auto run = [dialog, close_callback]() -> X_RESULT {
     X_RESULT result;
@@ -102,7 +103,7 @@ X_RESULT xeXamDispatchDialog(T* dialog,
   auto post = []() {
     xe::threading::Sleep(std::chrono::milliseconds(100));
     // Broadcast XN_SYS_UI = false
-    kernel_state()->BroadcastNotification(0x9, false);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, false);
   };
   if (!overlapped) {
     pre();
@@ -121,7 +122,7 @@ X_RESULT xeXamDispatchDialogEx(
     uint32_t overlapped) {
   auto pre = []() {
     // Broadcast XN_SYS_UI = true
-    kernel_state()->BroadcastNotification(0x9, true);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, true);
   };
   auto run = [dialog, close_callback](uint32_t& extended_error,
                                       uint32_t& length) -> X_RESULT {
@@ -146,7 +147,7 @@ X_RESULT xeXamDispatchDialogEx(
   auto post = []() {
     xe::threading::Sleep(std::chrono::milliseconds(100));
     // Broadcast XN_SYS_UI = false
-    kernel_state()->BroadcastNotification(0x9, false);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, false);
   };
   if (!overlapped) {
     pre();
@@ -165,12 +166,12 @@ X_RESULT xeXamDispatchHeadless(std::function<X_RESULT()> run_callback,
                                uint32_t overlapped) {
   auto pre = []() {
     // Broadcast XN_SYS_UI = true
-    kernel_state()->BroadcastNotification(0x9, true);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, true);
   };
   auto post = []() {
     xe::threading::Sleep(std::chrono::milliseconds(100));
     // Broadcast XN_SYS_UI = false
-    kernel_state()->BroadcastNotification(0x9, false);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, false);
   };
   if (!overlapped) {
     pre();
@@ -189,12 +190,12 @@ X_RESULT xeXamDispatchHeadlessEx(
     uint32_t overlapped) {
   auto pre = []() {
     // Broadcast XN_SYS_UI = true
-    kernel_state()->BroadcastNotification(0x9, true);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, true);
   };
   auto post = []() {
     xe::threading::Sleep(std::chrono::milliseconds(100));
     // Broadcast XN_SYS_UI = false
-    kernel_state()->BroadcastNotification(0x9, false);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, false);
   };
   if (!overlapped) {
     pre();
@@ -214,7 +215,7 @@ template <typename T>
 X_RESULT xeXamDispatchDialogAsync(T* dialog,
                                   std::function<void(T*)> close_callback) {
   // Broadcast XN_SYS_UI = true
-  kernel_state()->BroadcastNotification(0x9, true);
+  kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, true);
   ++xam_dialogs_shown_;
 
   // Important to pass captured vars by value here since we return from this
@@ -228,7 +229,7 @@ X_RESULT xeXamDispatchDialogAsync(T* dialog,
 
     xe::threading::Sleep(std::chrono::milliseconds(100));
     // Broadcast XN_SYS_UI = false
-    kernel_state()->BroadcastNotification(0x9, false);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, false);
   });
 
   return X_ERROR_SUCCESS;
@@ -236,7 +237,7 @@ X_RESULT xeXamDispatchDialogAsync(T* dialog,
 
 X_RESULT xeXamDispatchHeadlessAsync(std::function<void()> run_callback) {
   // Broadcast XN_SYS_UI = true
-  kernel_state()->BroadcastNotification(0x9, true);
+  kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, true);
   ++xam_dialogs_shown_;
 
   auto display_window = kernel_state()->emulator()->display_window();
@@ -247,7 +248,7 @@ X_RESULT xeXamDispatchHeadlessAsync(std::function<void()> run_callback) {
 
     xe::threading::Sleep(std::chrono::milliseconds(100));
     // Broadcast XN_SYS_UI = false
-    kernel_state()->BroadcastNotification(0x9, false);
+    kernel_state()->BroadcastNotification(kXNotificationIDSystemUI, false);
   });
 
   return X_ERROR_SUCCESS;
@@ -398,8 +399,8 @@ dword_result_t XNotifyQueueUI_entry(dword_t exnq, dword_t dwUserIndex,
                                     qword_t qwAreas,
                                     lpu16string_t displayText_ptr,
                                     lpvoid_t contextData) {
-  std::string title_text = "XNotifyQueueUI";
   std::string displayText = "";
+  const uint8_t position_id = static_cast<uint8_t>(qwAreas);
 
   if (displayText_ptr) {
     displayText = xe::to_utf8(displayText_ptr.value());
@@ -407,23 +408,11 @@ dword_result_t XNotifyQueueUI_entry(dword_t exnq, dword_t dwUserIndex,
 
   XELOGI("XNotifyQueueUI: {}", displayText);
 
-  if (cvars::headless) {
-    return X_ERROR_SUCCESS;
-  }
-
-  auto close = [](MessageBoxDialog* dialog) -> X_RESULT {
-    dialog->chosen_button();
-    return X_ERROR_SUCCESS;
-  };
-
-  std::vector<std::string> buttons(1, "OK");
-
   const Emulator* emulator = kernel_state()->emulator();
   ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
 
-  xeXamDispatchDialog<MessageBoxDialog>(
-      new MessageBoxDialog(imgui_drawer, title_text, displayText, buttons, 0),
-      close, false);
+  new xe::ui::XNotifyWindow(imgui_drawer, "", displayText, dwUserIndex,
+                            position_id);
 
   // XNotifyQueueUI -> XNotifyQueueUIEx -> XMsgProcessRequest ->
   // XMsgStartIORequestEx & XMsgInProcessCall
@@ -707,8 +696,8 @@ dword_result_t XamShowMarketplaceUI_entry(dword_t user_index, dword_t ui_type,
       if (button == 0) {
         cvars::license_mask = 1;
 
-        // XN_LIVE_CONTENT_INSTALLED
-        kernel_state()->BroadcastNotification(0x2000007, 0);
+        kernel_state()->BroadcastNotification(
+            kXNotificationIDLiveContentInstalled, 0);
       }
     }
   };
