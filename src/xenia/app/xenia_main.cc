@@ -99,6 +99,8 @@ DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
 DEFINE_bool(mount_cache, true, "Enable cache mount", "Storage");
 UPDATE_from_bool(mount_cache, 2024, 8, 31, 20, false);
 
+DEFINE_bool(mount_mu, false, "Enable memory unit mount", "Storage");
+
 DEFINE_transient_path(target, "",
                       "Specifies the target .xex or .iso to execute.",
                       "General");
