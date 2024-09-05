@@ -71,7 +71,7 @@ class AchievementNotificationWindow final : ImGuiGuestNotification {
                                 std::string title, std::string description,
                                 uint8_t user_index, uint8_t position_id = 0)
       : ImGuiGuestNotification(imgui_drawer, title, description, user_index,
-                               position_id) {};
+                               position_id){};
 
   void OnDraw(ImGuiIO& io) override;
 };
@@ -82,7 +82,7 @@ class XNotifyWindow final : ImGuiGuestNotification {
                 std::string description, uint8_t user_index,
                 uint8_t position_id = 0)
       : ImGuiGuestNotification(imgui_drawer, title, description, user_index,
-                               position_id) {};
+                               position_id){};
 
   void OnDraw(ImGuiIO& io) override;
 };

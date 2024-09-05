@@ -41,7 +41,7 @@ class HostNotificationWindow final : ImGuiHostNotification {
                          std::string description, uint8_t user_index,
                          uint8_t position_id = 10)
       : ImGuiHostNotification(imgui_drawer, title, description, user_index,
-                              position_id) {};
+                              position_id){};
 
   void OnDraw(ImGuiIO& io) override;
 };
