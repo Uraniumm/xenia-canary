@@ -94,7 +94,8 @@ class Emulator {
                     const std::filesystem::path& storage_root,
                     const std::filesystem::path& content_root,
                     const std::filesystem::path& cache_root,
-                    const std::filesystem::path& mu_root);
+                    const std::filesystem::path& mu_root,
+                    const std::filesystem::path& devkit_root);
   ~Emulator();
 
   // Full command line used when launching the process.
@@ -290,6 +291,7 @@ class Emulator {
   std::filesystem::path content_root_;
   std::filesystem::path mu_root_;
   std::filesystem::path cache_root_;
+  std::filesystem::path devkit_root_;
 
   std::string title_name_;
   std::string title_version_;

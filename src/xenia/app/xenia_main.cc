@@ -93,6 +93,11 @@ DEFINE_path(
     "Root path for memory unit file storage (logs, etc.), or empty to use the "
     "mu folder under the storage root.",
     "Storage");
+DEFINE_path(
+    devkit_root, "",
+    "Root path for XDK/DEVKIT/E partition mount, or empty to use the "
+    "mu folder under the storage root.",
+    "Storage");
 
 DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
 
@@ -100,6 +105,8 @@ DEFINE_bool(mount_cache, true, "Enable cache mount", "Storage");
 UPDATE_from_bool(mount_cache, 2024, 8, 31, 20, false);
 
 DEFINE_bool(mount_mu, false, "Enable memory unit mount", "Storage");
+
+DEFINE_bool(mount_devkit, false, "Enable DEVKIT partition mount", "Storage");
 
 DEFINE_transient_path(target, "",
                       "Specifies the target .xex or .iso to execute.",
@@ -460,8 +467,21 @@ bool EmulatorApp::OnInitialize() {
       mu_root = storage_root / mu_root;
     }
   }
-  mu_root = std::filesystem::absolute(mu_root);
-  XELOGI("MU root: {}", xe::path_to_utf8(mu_root));
+
+  std::filesystem::path devkit_root = cvars::devkit_root;
+  if (devkit_root.empty()) {
+    devkit_root = storage_root / "DEVKIT";
+    // TODO(Triang3l): Point to the app's external storage "DEVKIT" directory on
+    // Android.
+  } else {
+    // If content root isn't an absolute path, then it should be relative to the
+    // storage root.
+    if (!devkit_root.is_absolute()) {
+      devkit_root = storage_root / devkit_root;
+    }
+  }
+  devkit_root = std::filesystem::absolute(devkit_root);
+  XELOGI("DEVKIT root: {}", xe::path_to_utf8(devkit_root));
 
   if (cvars::discord) {
     discord::DiscordPresence::Initialize();
@@ -470,7 +490,7 @@ bool EmulatorApp::OnInitialize() {
 
   // Create the emulator but don't initialize so we can setup the window.
   emulator_ = std::make_unique<Emulator>("", storage_root, content_root,
-                                         cache_root, mu_root);
+                                         cache_root, mu_root, devkit_root);
 
   // Determine window size based on user widescreen setting.
   uint32_t window_w = 1280;
@@ -603,6 +623,20 @@ void EmulatorApp::EmulatorThread() {
         XELOGE("Unable to register MU path");
       } else {
         emulator_->file_system()->RegisterSymbolicLink("MU:", "\\MU");
+      }
+    }
+  }
+
+  if (cvars::mount_devkit) {
+    auto devkit_device =
+        std::make_unique<xe::vfs::HostPathDevice>("\\DEVKIT", "devkit", false);
+    if (!devkit_device->Initialize()) {
+      XELOGE("Unable to scan DEVKIT path");
+    } else {
+      if (!emulator_->file_system()->RegisterDevice(std::move(devkit_device))) {
+        XELOGE("Unable to register DEVKIT path");
+      } else {
+        emulator_->file_system()->RegisterSymbolicLink("DEVKIT:", "\\DEVKIT");
       }
     }
   }
