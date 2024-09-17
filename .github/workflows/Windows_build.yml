@@ -85,11 +85,11 @@ jobs:
           }
           $tag=$env:GITHUB_SHA.SubString(0,7)
           $branch=$($env:GITHUB_REF -replace 'refs/heads/')
-          $title="$branch(KB/MU)"
+          $title="${tag}_$branch(KB/MU)"
           gh release create $tag $asset --target $env:GITHUB_SHA -t $title
           # Remove canary_ to prevent conflicts from tag
           $tag=$($branch -replace 'canary_')
           gh release delete $tag -y
           git push --delete origin $tag
           git tag -d $tag
-          gh release create $tag $asset --target $env:GITHUB_SHA -t $branch
+          gh release create $tag $asset --target $env:GITHUB_SHA -t "$branch(KB/MU)"
