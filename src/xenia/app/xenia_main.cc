@@ -106,7 +106,10 @@ UPDATE_from_bool(mount_cache, 2024, 8, 31, 20, false);
 
 DEFINE_bool(mount_mu, false, "Enable memory unit mount", "Storage");
 
-DEFINE_bool(mount_devkit, false, "Enable DEVKIT partition mount", "Storage");
+DEFINE_bool(mount_devkit, false,
+            "Enable DEVKIT mount at launch instead of waiting for an explicit "
+            "DmMapDevkitDrive call.",
+            "Storage");
 
 DEFINE_transient_path(target, "",
                       "Specifies the target .xex or .iso to execute.",
