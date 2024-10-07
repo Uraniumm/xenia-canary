@@ -65,7 +65,8 @@ PatchFileEntry PatchDB::ReadPatchFile(
   try {
     patch_toml_fields = ParseFile(file_path);
   } catch (...) {
-    XELOGE("PatchDB: Cannot load patch file: {}", path_to_utf8(file_path));
+    XELOGE("PatchDB: Cannot load patch file: {}",
+           path_to_utf8(file_path.filename()));
     patch_file.title_id = -1;
     return patch_file;
   };
@@ -73,6 +74,13 @@ PatchFileEntry PatchDB::ReadPatchFile(
   auto title_name = patch_toml_fields.get_as<std::string>("title_name");
   auto title_id = patch_toml_fields.get_as<std::string>("title_id");
   auto hashes_node = patch_toml_fields.get("hash");
+
+  if (!title_name || !title_id || !hashes_node) {
+    XELOGE("PatchDB: Cannot load patch file: {}",
+           path_to_utf8(file_path.filename()));
+    patch_file.title_id = -1;
+    return patch_file;
+  }
 
   patch_file.title_id = strtoul(title_id->get().c_str(), NULL, 16);
   patch_file.title_name = title_name->get();
@@ -141,14 +149,29 @@ bool PatchDB::ReadPatchData(std::vector<PatchDataEntry>& patch_data,
         break;
       }
       case PatchDataType::kF64: {
-        double val = table->get_as<double>("value")->get();
-        uint64_t value = *reinterpret_cast<uint64_t*>(&val);
+        const auto value_field = table->get("value");
+        double value = 0.0;
+        if (value_field->is_floating_point()) {
+          value = value_field->as_floating_point()->get();
+        }
+        if (value_field->is_integer()) {
+          value = static_cast<double>(value_field->as_integer()->get());
+        }
+
         patch_data.push_back(
             {address, PatchDataValue(alloc_size, xe::byte_swap(value))});
         break;
       }
       case PatchDataType::kF32: {
-        float value = float(table->get_as<double>("value")->get());
+        const auto value_field = table->get("value");
+        float value = 0.0f;
+        if (value_field->is_floating_point()) {
+          value = static_cast<float>(value_field->as_floating_point()->get());
+        }
+        if (value_field->is_integer()) {
+          value = static_cast<float>(value_field->as_integer()->get());
+        }
+
         patch_data.push_back(
             {address, PatchDataValue(alloc_size, xe::byte_swap(value))});
         break;
@@ -205,16 +228,27 @@ std::vector<PatchFileEntry> PatchDB::GetTitlePatches(
 
 void PatchDB::ReadHashes(PatchFileEntry& patch_entry,
                          const toml::node* hashes_node) const {
+  auto add_hash = [&patch_entry](const toml::node* hash_node) {
+    if (!hash_node->is_string()) {
+      return;
+    }
+
+    const auto string_hash = hash_node->as_string()->get();
+    if (string_hash.empty()) {
+      return;
+    }
+
+    patch_entry.hashes.push_back(
+        xe::string_util::from_string<uint64_t>(string_hash, true));
+  };
+
   if (hashes_node->is_value()) {
-    patch_entry.hashes.push_back(xe::string_util::from_string<uint64_t>(
-        hashes_node->value_or("\0"), true));
-    return;
+    add_hash(hashes_node);
   }
 
   if (hashes_node->is_array()) {
     for (const auto& hash_entry : *hashes_node->as_array()) {
-      patch_entry.hashes.push_back(xe::string_util::from_string<uint64_t>(
-          hash_entry.value_or("\0"), true));
+      add_hash(&hash_entry);
     }
   }
 }
