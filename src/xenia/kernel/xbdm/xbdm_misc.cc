@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -21,6 +22,10 @@ static constexpr const char DmXboxName[] = "Xbox360Name";
 namespace xe {
 namespace kernel {
 namespace xbdm {
+DEFINE_bool(
+    force_debugger_present, false,
+    "Force DmIsDebuggerPresent to return true",
+    "HACKS");
 #define XBDM_SUCCESSFUL 0x02DA0000
 #define XBDM_UNSUCCESSFUL 0x82DA0000
 
@@ -66,7 +71,8 @@ dword_result_t DmGetXboxName_entry(const ppc_context_t& ctx) {
 }
 DECLARE_XBDM_EXPORT1(DmGetXboxName, kDebug, kImplemented)
 
-dword_result_t DmIsDebuggerPresent_entry() { return 0; }
+dword_result_t DmIsDebuggerPresent_entry() { return int(cvars::force_debugger_present);
+}
 DECLARE_XBDM_EXPORT1(DmIsDebuggerPresent, kDebug, kStub);
 
 void DmSendNotificationString_entry(lpdword_t unk0_ptr) {}

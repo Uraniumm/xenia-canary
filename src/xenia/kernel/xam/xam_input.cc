@@ -153,7 +153,7 @@ dword_result_t XamInputSetState_entry(
   auto input_system = kernel_state()->emulator()->input_system();
   auto lock = input_system->lock();
   // return input_system->SetState(user_index, vibration);
-  return input_system->SetState(actual_user_index, vibration);
+  return input_system->SetState(user_index, vibration);
 }
 DECLARE_XAM_EXPORT1(XamInputSetState, kInput, kImplemented);
 
