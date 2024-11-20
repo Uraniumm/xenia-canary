@@ -15,6 +15,7 @@
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/logging.h"
 #include "xenia/emulator.h"
+#include "xenia/hid/input_system.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/crypto_utils.h"
 #include "xenia/vfs/devices/host_path_device.h"
@@ -149,6 +150,10 @@ UserProfile* ProfileManager::GetProfile(const uint64_t xuid) const {
 }
 
 UserProfile* ProfileManager::GetProfile(uint8_t user_index) const {
+  if (user_index == XUserIndexLatest) {
+    user_index = kernel_state_->emulator()->input_system()->GetLastUsedSlot();
+  }
+
   if (user_index == XUserIndexNone) {
     return nullptr;
   }
@@ -228,6 +233,26 @@ void ProfileManager::LoadAccounts(const std::vector<uint64_t> profiles_xuids) {
   }
 }
 
+void ProfileManager::ModifyGamertag(const uint64_t xuid, std::string gamertag) {
+  if (!accounts_.count(xuid)) {
+    return;
+  }
+
+  xe::X_XAMACCOUNTINFO* account = &accounts_[xuid];
+
+  std::u16string gamertag_u16 = xe::to_utf16(gamertag);
+
+  string_util::copy_truncating(account->gamertag, gamertag_u16,
+                               sizeof(account->gamertag));
+
+  if (!MountProfile(xuid)) {
+    return;
+  }
+
+  UpdateAccount(xuid, account);
+  DismountProfile(xuid);
+}
+
 bool ProfileManager::MountProfile(const uint64_t xuid) {
   std::filesystem::path profile_path = GetProfilePath(xuid);
   std::string mount_path = fmt::format("{:016X}", xuid) + ':';
@@ -249,7 +274,8 @@ bool ProfileManager::DismountProfile(const uint64_t xuid) {
       fmt::format("{:016X}", xuid) + ':');
 }
 
-void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index) {
+void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index,
+                           bool notify) {
   if (logged_profiles_.size() >= 4 && user_index >= XUserMaxUserCount) {
     XELOGE(
         "Cannot login account with XUID: {:016X} due to lack of free slots "
@@ -288,21 +314,37 @@ void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index) {
 
   logged_profiles_[assigned_user_slot] =
       std::make_unique<UserProfile>(xuid, &profile);
-  kernel_state_->BroadcastNotification(kXNotificationIDSystemSignInChanged,
-                                       GetUsedUserSlots().to_ulong());
+  if (notify) {
+    kernel_state_->BroadcastNotification(kXNotificationIDSystemSignInChanged,
+                                         GetUsedUserSlots().to_ulong());
+  }
   UpdateConfig(xuid, assigned_user_slot);
 }
 
-void ProfileManager::Logout(const uint8_t user_index) {
+void ProfileManager::Logout(const uint8_t user_index, bool notify) {
   auto profile = logged_profiles_.find(user_index);
   if (profile == logged_profiles_.cend()) {
     return;
   }
   DismountProfile(profile->second->xuid());
   logged_profiles_.erase(profile);
-  kernel_state_->BroadcastNotification(kXNotificationIDSystemSignInChanged,
-                                       GetUsedUserSlots().to_ulong());
+  if (notify) {
+    kernel_state_->BroadcastNotification(kXNotificationIDSystemSignInChanged,
+                                         GetUsedUserSlots().to_ulong());
+  }
   UpdateConfig(0, user_index);
+}
+
+void ProfileManager::LoginMultiple(
+    const std::map<uint8_t, uint64_t>& profiles) {
+  int slots_mask = 0;
+  for (auto [slot, xuid] : profiles) {
+    Login(xuid, slot, false);
+    slots_mask |= (1 << slot);
+  }
+
+  kernel_state_->BroadcastNotification(kXNotificationIDSystemSignInChanged,
+                                       slots_mask);
 }
 
 std::vector<uint64_t> ProfileManager::FindProfiles() const {
@@ -405,7 +447,7 @@ std::filesystem::path ProfileManager::GetProfilePath(
          fmt::format("{:08X}", XContentType::kProfile) / xuid;
 }
 
-bool ProfileManager::CreateProfile(const std::string gamertag,
+bool ProfileManager::CreateProfile(const std::string gamertag, bool autologin,
                                    bool default_xuid) {
   const auto xuid = !default_xuid ? GenerateXuid() : 0xB13EBABEBABEBABE;
 
@@ -418,7 +460,7 @@ bool ProfileManager::CreateProfile(const std::string gamertag,
   }
 
   const bool is_account_created = CreateAccount(xuid, gamertag);
-  if (is_account_created) {
+  if (is_account_created && autologin) {
     Login(xuid);
   }
   return is_account_created;
@@ -426,40 +468,44 @@ bool ProfileManager::CreateProfile(const std::string gamertag,
 
 bool ProfileManager::CreateAccount(const uint64_t xuid,
                                    const std::string gamertag) {
-  const std::string guest_path =
-      xe::string_util::to_hex_string(xuid) + ":\\Account";
-
-  xe::vfs::File* output_file;
-  xe::vfs::FileAction action = {};
-  auto status = kernel_state_->file_system()->OpenFile(
-      nullptr, guest_path, xe::vfs::FileDisposition::kCreate,
-      xe::vfs::FileAccess::kFileWriteData, false, true, &output_file, &action);
-
-  if (XFAILED(status) || !output_file || !output_file->entry()) {
-    XELOGI("{}: Failed to open Account file for creation: {:08X}", __func__,
-           status);
-    DismountProfile(xuid);
-    return false;
-  }
-
   X_XAMACCOUNTINFO account = {};
   std::u16string gamertag_u16 = xe::to_utf16(gamertag);
 
   string_util::copy_truncating(account.gamertag, gamertag_u16,
                                sizeof(account.gamertag));
 
+  UpdateAccount(xuid, &account);
+  DismountProfile(xuid);
+
+  accounts_.insert({xuid, account});
+  return true;
+}
+
+bool ProfileManager::UpdateAccount(const uint64_t xuid,
+                                   X_XAMACCOUNTINFO* account) {
+  const std::string guest_path =
+      xe::string_util::to_hex_string(xuid) + ":\\Account";
+
+  xe::vfs::File* output_file;
+  xe::vfs::FileAction action = {};
+  auto status = kernel_state_->file_system()->OpenFile(
+      nullptr, guest_path, xe::vfs::FileDisposition::kOpenIf,
+      xe::vfs::FileAccess::kFileWriteData, false, true, &output_file, &action);
+
+  if (XFAILED(status) || !output_file || !output_file->entry()) {
+    XELOGI("{}: Failed to open Account file for creation: {:08X}", __func__,
+           status);
+    return false;
+  }
+
   std::vector<uint8_t> encrypted_data;
   encrypted_data.resize(sizeof(X_XAMACCOUNTINFO) + 0x18);
-  EncryptAccountFile(&account, encrypted_data.data());
+  EncryptAccountFile(account, encrypted_data.data());
 
   size_t written_bytes = 0;
   output_file->WriteSync(encrypted_data.data(), encrypted_data.size(), 0,
                          &written_bytes);
   output_file->Destroy();
-
-  DismountProfile(xuid);
-
-  accounts_.insert({xuid, account});
   return true;
 }
 

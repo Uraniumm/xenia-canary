@@ -336,6 +336,7 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
     ImGui::End();
     return;
   }
+
   // Even if the close button has been pressed, still paint everything not to
   // have one frame with an empty window.
 
@@ -355,11 +356,11 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
       ImGui::RadioButton("None", &new_swap_post_effect_index,
                          int(gpu::CommandProcessor::SwapPostEffect::kNone));
       ImGui::RadioButton(
-          "NVIDIA Fast Approximate Anti-Aliasing 3.11 (FXAA), normal quality",
+          "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Normal Quality]",
           &new_swap_post_effect_index,
           int(gpu::CommandProcessor::SwapPostEffect::kFxaa));
       ImGui::RadioButton(
-          "NVIDIA Fast Approximate Anti-Aliasing 3.11 (FXAA), extreme quality",
+          "NVIDIA Fast Approximate Anti-Aliasing (FXAA) [Extreme Quality]",
           &new_swap_post_effect_index,
           int(gpu::CommandProcessor::SwapPostEffect::kFxaaExtreme));
       gpu::CommandProcessor::SwapPostEffect new_swap_post_effect =
@@ -393,7 +394,7 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
       // Filtering effect.
       int new_effect_index = int(new_presenter_config.GetEffect());
       ImGui::RadioButton(
-          "None / bilinear", &new_effect_index,
+          "None / Bilinear", &new_effect_index,
           int(ui::Presenter::GuestOutputPaintConfig::Effect::kBilinear));
       ImGui::RadioButton(
           "AMD FidelityFX Contrast Adaptive Sharpening (CAS)",
@@ -467,8 +468,8 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
               new_presenter_config.GetFsrSharpnessReduction();
           ImGui::TextUnformatted(
               "FSR sharpness reduction when upscaling (lower is sharper):");
-          const auto label =
-              fmt::format("{:.3f} stops", fsr_sharpness_reduction);
+          const auto label = fmt::format(
+              "{} %%", static_cast<int>(fsr_sharpness_reduction * 100));
           // Power 2.0 scaling as the reduction is in stops, used in exp2.
           fsr_sharpness_reduction = sqrt(2.f * fsr_sharpness_reduction);
           ImGui::SliderFloat(
@@ -495,11 +496,13 @@ void EmulatorWindow::DisplayConfigDialog::OnDraw(ImGuiIO& io) {
                 ? "CAS additional sharpness when not upscaling (higher is "
                   "sharper):"
                 : "CAS additional sharpness (higher is sharper):");
+        const auto label = fmt::format(
+            "{} %%", static_cast<int>(cas_additional_sharpness * 100));
         ImGui::SliderFloat(
             "##CASAdditionalSharpness", &cas_additional_sharpness,
             ui::Presenter::GuestOutputPaintConfig::kCasAdditionalSharpnessMin,
             ui::Presenter::GuestOutputPaintConfig::kCasAdditionalSharpnessMax,
-            "%.3f");
+            label.c_str(), ImGuiSliderFlags_NoInput);
         ImGui::SameLine();
         if (ImGui::Button("Reset##ResetCASAdditionalSharpness")) {
           cas_additional_sharpness = ui::Presenter::GuestOutputPaintConfig ::
@@ -716,8 +719,8 @@ bool EmulatorWindow::Initialize() {
     help_menu->AddChild(MenuItem::Create(
         MenuItem::Type::kString, "Recent changes on GitHub...", []() {
           LaunchWebBrowser(
-              "https://github.com/xenia-project/xenia/compare/" XE_BUILD_COMMIT
-              "..." XE_BUILD_BRANCH);
+              "https://github.com/xenia-canary/xenia-canary/"
+              "compare/" XE_BUILD_COMMIT "..." XE_BUILD_BRANCH);
         }));
     help_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
     help_menu->AddChild(MenuItem::Create(
@@ -1430,7 +1433,7 @@ void EmulatorWindow::ToggleControllerVibration() {
 
 void EmulatorWindow::ShowCompatibility() {
   const std::string_view base_url =
-      "https://github.com/xenia-project/game-compatibility/issues";
+      "https://github.com/xenia-canary/game-compatibility/issues";
   std::string url;
   // Avoid searching for a title ID of "00000000".
   uint32_t title_id = emulator_->title_id();
@@ -1443,16 +1446,16 @@ void EmulatorWindow::ShowCompatibility() {
 }
 
 void EmulatorWindow::ShowFAQ() {
-  LaunchWebBrowser("https://github.com/xenia-project/xenia/wiki/FAQ");
+  LaunchWebBrowser("https://github.com/xenia-canary/xenia-canary/wiki/FAQ");
 }
 
 void EmulatorWindow::ShowBuildCommit() {
 #ifdef XE_BUILD_IS_PR
   LaunchWebBrowser(
-      "https://github.com/xenia-project/xenia/pull/" XE_BUILD_PR_NUMBER);
+      "https://github.com/xenia-canary/xenia-canary/pull/" XE_BUILD_PR_NUMBER);
 #else
   LaunchWebBrowser(
-      "https://github.com/xenia-project/xenia/commit/" XE_BUILD_COMMIT);
+      "https://github.com/xenia-canary/xenia-canary/commit/" XE_BUILD_COMMIT);
 #endif
 }
 
