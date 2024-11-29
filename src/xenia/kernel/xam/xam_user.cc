@@ -65,6 +65,24 @@ X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
 }
 DECLARE_XAM_EXPORT1(XamUserGetXUID, kUserProfiles, kImplemented);
 
+dword_result_t XamUserGetIndexFromXUID_entry(qword_t xuid, dword_t flags,
+                                             pointer_t<uint32_t> index) {
+  if (!index) {
+    return X_E_INVALIDARG;
+  }
+
+  auto profile_manager = kernel_state()->xam_state()->profile_manager();
+  const uint8_t user_index =
+      profile_manager->GetUserIndexAssignedToProfile(xuid);
+  if (user_index == XUserIndexAny) {
+    return X_E_NO_SUCH_USER;
+  }
+
+  *index = user_index;
+  return X_E_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamUserGetIndexFromXUID, kUserProfiles, kImplemented);
+
 dword_result_t XamUserGetSigninState_entry(dword_t user_index) {
   // Yield, as some games spam this.
   xe::threading::MaybeYield();
@@ -141,16 +159,16 @@ DECLARE_XAM_EXPORT1(XamUserGetName, kUserProfiles, kImplemented);
 dword_result_t XamUserGetGamerTag_entry(dword_t user_index,
                                         lpu16string_t buffer,
                                         dword_t buffer_len) {
-  if (user_index >= XUserMaxUserCount) {
-    return X_E_INVALIDARG;
-  }
-
   if (!buffer || buffer_len < 16) {
     return X_E_INVALIDARG;
   }
 
-  if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+  if (user_index >= XUserMaxUserCount) {
     return X_E_INVALIDARG;
+  }
+
+  if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+    return X_ERROR_NO_SUCH_USER;
   }
 
   const auto& user_profile =
@@ -510,7 +528,8 @@ dword_result_t XamUserGetMembershipTier_entry(dword_t user_index) {
   if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
     return X_ERROR_NO_SUCH_USER;
   }
-  return 6 /* 6 appears to be Gold */;
+
+  return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold;
 }
 DECLARE_XAM_EXPORT1(XamUserGetMembershipTier, kUserProfiles, kStub);
 
@@ -560,7 +579,7 @@ dword_result_t XamUserAreUsersFriends_entry(dword_t user_index, dword_t unk1,
 DECLARE_XAM_EXPORT1(XamUserAreUsersFriends, kUserProfiles, kStub);
 
 dword_result_t XamUserCreateAchievementEnumerator_entry(
-    dword_t title_id, dword_t user_index, dword_t xuid, dword_t flags,
+    dword_t title_id, dword_t user_index, qword_t xuid, dword_t flags,
     dword_t offset, dword_t count, lpdword_t buffer_size_ptr,
     lpdword_t handle_ptr) {
   if (!count || !buffer_size_ptr || !handle_ptr) {
@@ -624,6 +643,27 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
 DECLARE_XAM_EXPORT1(XamUserCreateAchievementEnumerator, kUserProfiles,
                     kSketchy);
 
+dword_result_t XamUserCreateTitlesPlayedEnumerator_entry(
+    dword_t title_id, dword_t user_index, qword_t xuid, dword_t starting_index,
+    dword_t game_count, lpdword_t buffer_size_ptr, lpdword_t handle_ptr) {
+  if (user_index >= XUserMaxUserCount && game_count != 0 && !buffer_size_ptr &&
+      !handle_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  // auto e = new XStaticEnumerator<X_XDBF_GPD_TITLEPLAYED>(kernel_state(),
+  // game_count); auto result = e->Initialize(user_index, 0xFB, 0xB0050,
+  // 0xB000B, 0x20, game_count, 0);
+
+  XELOGD("XamUserCreateTitlesPlayedEnumerator: Stubbed");
+
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XamUserCreateTitlesPlayedEnumerator, kUserProfiles, kStub);
+
 dword_result_t XamParseGamerTileKey_entry(lpdword_t key_ptr, lpdword_t out1_ptr,
                                           lpdword_t out2_ptr,
                                           lpdword_t out3_ptr) {
@@ -684,28 +724,62 @@ dword_result_t XamSessionRefObjByHandle_entry(dword_t handle,
 }
 DECLARE_XAM_EXPORT1(XamSessionRefObjByHandle, kUserProfiles, kStub);
 
-dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(
-    dword_t unk1, dword_t unk2, lpdword_t unk3, dword_t unk4, dword_t unk5,
-    dword_t unk6) {
-  if (!unk3 || unk1 != 255 && unk1 >= 4) {
-    return 87;
+dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(dword_t user_index,
+                                                       dword_t unk,
+                                                       lpdword_t result_ptr) {
+  if (!result_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
   }
-  *unk3 = 1;
-  return 0;
+
+  if (user_index != XUserIndexAny && user_index >= XUserMaxUserCount) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  // uint32_t result = XamUserCheckPrivilege_entry(user_index, 0xD4u,
+  // result_ptr);
+
+  *result_ptr = 1;
+
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserIsUnsafeProgrammingAllowed, kUserProfiles, kStub);
 
 dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index,
-                                                dword_t unk2, dword_t unk3,
-                                                dword_t unk4, dword_t unk5,
-                                                dword_t unk6) {
-  if (!unk2 || !unk3 || user_index >= XUserMaxUserCount) {
+                                                dword_t unk2, dword_t unk3) {
+  if (user_index >= XUserMaxUserCount) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!unk2 || !unk3) {
     return X_E_INVALIDARG;
   }
 
-  return 0;
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserGetSubscriptionType, kUserProfiles, kStub);
+
+dword_result_t XamUserGetUserFlags_entry(dword_t user_index) {
+  if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+    return 0;
+  }
+
+  const auto& user_profile =
+      kernel_state()->xam_state()->GetUserProfile(user_index);
+
+  return user_profile->GetCachedFlags();
+}
+DECLARE_XAM_EXPORT1(XamUserGetUserFlags, kUserProfiles, kImplemented);
+
+dword_result_t XamUserGetUserFlagsFromXUID_entry(qword_t xuid) {
+  if (!kernel_state()->xam_state()->IsUserSignedIn(xuid)) {
+    return 0;
+  }
+
+  const auto& user_profile = kernel_state()->xam_state()->GetUserProfile(xuid);
+
+  return user_profile->GetCachedFlags();
+}
+DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kImplemented);
 
 constexpr uint8_t kStatsMaxAmount = 64;
 
@@ -751,6 +825,35 @@ dword_result_t XamUserCreateStatsEnumerator_entry(
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserCreateStatsEnumerator, kUserProfiles, kSketchy);
+
+dword_result_t XamProfileFindAccount_entry(
+    qword_t offline_xuid, pointer_t<X_XAMACCOUNTINFO> account_ptr,
+    lpdword_t device_id) {
+  if (!account_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  account_ptr.Zero();
+
+  const auto& account =
+      kernel_state()->xam_state()->profile_manager()->GetAccount(offline_xuid);
+
+  if (!account) {
+    return X_ERROR_NO_SUCH_USER;
+  }
+
+  std::memcpy(account_ptr, &account, sizeof(X_XAMACCOUNTINFO));
+
+  xe::string_util::copy_and_swap_truncating(
+      account_ptr->gamertag, account->gamertag, sizeof(account->gamertag));
+
+  if (device_id) {
+    *device_id = 1;
+  }
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamProfileFindAccount, kUserProfiles, kImplemented);
 
 }  // namespace xam
 }  // namespace kernel

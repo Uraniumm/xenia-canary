@@ -393,7 +393,7 @@ uint8_t ProfileManager::FindFirstFreeProfileSlot() const {
       return i;
     }
   }
-  return -1;
+  return XUserIndexAny;
 }
 
 std::bitset<XUserMaxUserCount> ProfileManager::GetUsedUserSlots() const {
@@ -422,7 +422,7 @@ uint8_t ProfileManager::GetUserIndexAssignedToProfile(
 
     return index;
   }
-  return -1;
+  return XUserIndexAny;
 }
 
 std::filesystem::path ProfileManager::GetProfileContentPath(
@@ -464,6 +464,14 @@ bool ProfileManager::CreateProfile(const std::string gamertag, bool autologin,
     Login(xuid);
   }
   return is_account_created;
+}
+
+const X_XAMACCOUNTINFO* ProfileManager::GetAccount(const uint64_t xuid) {
+  if (!accounts_.count(xuid)) {
+    return nullptr;
+  }
+
+  return &accounts_[xuid];
 }
 
 bool ProfileManager::CreateAccount(const uint64_t xuid,

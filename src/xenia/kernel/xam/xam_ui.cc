@@ -1051,7 +1051,6 @@ class SigninDialog : public XamDialog {
     if (ImGui::BeginPopupModal(title_.c_str(), nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
       auto profile_manager = kernel_state()->xam_state()->profile_manager();
-      auto profiles = profile_manager->GetProfiles();
 
       for (uint32_t i = 0; i < users_needed_; i++) {
         ImGui::BeginGroup();
@@ -1136,12 +1135,12 @@ class SigninDialog : public XamDialog {
         // Draw profile badge.
         uint8_t slot = chosen_slots_[i];
         uint64_t xuid = chosen_xuids_[i];
+        const auto account = profile_manager->GetAccount(xuid);
 
-        if (slot == 0xFF || xuid == 0 || profiles->count(xuid) == 0) {
+        if (slot == 0xFF || xuid == 0 || !account) {
           float ypos = ImGui::GetCursorPosY();
           ImGui::SetCursorPosY(ypos + ImGui::GetTextLineHeight() * 5);
         } else {
-          const X_XAMACCOUNTINFO* account = &profiles->at(xuid);
           xeDrawProfileContent(imgui_drawer(), xuid, slot, account, nullptr);
         }
 
@@ -1229,7 +1228,7 @@ class SigninDialog : public XamDialog {
 
   void ReloadProfiles(bool first_draw) {
     auto profile_manager = kernel_state()->xam_state()->profile_manager();
-    auto profiles = profile_manager->GetProfiles();
+    auto profiles = profile_manager->GetAccounts();
 
     profile_data_.clear();
     for (auto& [xuid, account] : *profiles) {
@@ -1252,7 +1251,7 @@ class SigninDialog : public XamDialog {
         uint64_t xuid = elem.first;
         uint8_t slot = profile_manager->GetUserIndexAssignedToProfile(xuid);
         for (uint32_t j = 0; j < users_needed_; j++) {
-          if (chosen_slots_[j] != 0xFF && slot == chosen_slots_[j]) {
+          if (chosen_slots_[j] != XUserIndexAny && slot == chosen_slots_[j]) {
             chosen_xuids_[j] = xuid;
           }
         }
@@ -1275,7 +1274,8 @@ class SigninDialog : public XamDialog {
   char gamertag_[16] = "";
 };
 
-dword_result_t XamShowSigninUI_entry(dword_t users_needed, dword_t unk_mask) {
+X_RESULT xeXamShowSigninUI(uint32_t user_index, uint32_t users_needed,
+                           uint32_t flags) {
   // Mask values vary. Probably matching user types? Local/remote?
   // Games seem to sit and loop until we trigger sign in notification.
   if (users_needed != 1 && users_needed != 2 && users_needed != 4) {
@@ -1305,7 +1305,17 @@ dword_result_t XamShowSigninUI_entry(dword_t users_needed, dword_t unk_mask) {
   return xeXamDispatchDialogAsync<SigninDialog>(
       new SigninDialog(imgui_drawer, users_needed), close);
 }
+
+dword_result_t XamShowSigninUI_entry(dword_t users_needed, dword_t flags) {
+  return xeXamShowSigninUI(XUserIndexAny, users_needed, flags);
+}
 DECLARE_XAM_EXPORT1(XamShowSigninUI, kUserProfiles, kImplemented);
+
+dword_result_t XamShowSigninUIp_entry(dword_t user_index, dword_t users_needed,
+                                      dword_t flags) {
+  return xeXamShowSigninUI(user_index, users_needed, flags);
+}
+DECLARE_XAM_EXPORT1(XamShowSigninUIp, kUserProfiles, kImplemented);
 
 }  // namespace xam
 }  // namespace kernel
