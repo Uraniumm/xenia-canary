@@ -91,12 +91,12 @@ X_RESULT InputSystem::GetCapabilities(uint32_t user_index, uint32_t flags,
 X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
   SCOPE_profile_cpu_f("hid");
 
-  bool any_connected = false;
+  bool any_connected = true;
   for (auto& driver : drivers_) {
     X_RESULT result = driver->GetState(user_index, out_state);
-    if (result != X_ERROR_DEVICE_NOT_CONNECTED) {
+    /*if (result != X_ERROR_DEVICE_NOT_CONNECTED) {
       any_connected = true;
-    }
+    }*/
     if (result == X_ERROR_SUCCESS) {
       UpdateUsedSlot(driver.get(), user_index, any_connected);
       AdjustDeadzoneLevels(user_index, &out_state->gamepad);
